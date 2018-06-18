@@ -90,7 +90,7 @@ var stripe = function(data) {
                     return "FEMALE";
                     break;
                 default:
-                    return "UKNOWN";
+                    return "UNKNOWN";
                     break;
             }
         },
@@ -226,7 +226,7 @@ function getPdf417Parsed(data, separator) {
         var match = regex.exec(data);
         
         //Default string to prevent errors i.e. Minnesota lacks DAK
-        parsedData[fields[i]] = "";
+        //parsedData[fields[i]] = "";
         if(match){
             if(match[0].slice(3, match[0].length)) {
                 parsedData[fields[i]] = match[0].slice(3, match[0].length - 1).trim();
@@ -282,84 +282,92 @@ function getPdf417Parsed(data, separator) {
 
 var pdf417 = function(data, separator) {
     var parsedData = getPdf417Parsed(data, separator);
-    var rawData = {
-        "state": parsedData.DAJ,
-        "city": parsedData.DAI,
-        "name": function() {
-            return {
-                last: parsedData.DCS,
-                first: parsedData.DAC,
-                middle: parsedData.DAD
-            }
-        },
-        "address": parsedData.DAG,
-        "iso_iin": undefined,
-        // Because Michigican puts spaces in their license numbers. Why...
-        "dl": parsedData.DAQ.replace(' ', ''),
-        "expiration_date": function() {
-            var exp = parsedData.DBA.match(/(\d{4})(\d{2})(\d{2})/);
-            var date;
-            if(exp[1].startsWith('20')){
-                //Year is first
-                exp[1] = parseInt(exp[1]);
-                exp[2] = parseInt(exp[2]);
-                exp[3] = parseInt(exp[3]);
-                date = new Date(Date.UTC(exp[1], (exp[2]-1), (exp[3]+1))).setHours(15,0,0,0);
-            }else{
-                exp = parsedData.DBA.match(/(\d{2})(\d{2})(\d{4})/);
-                exp[1] = parseInt(exp[1]);
-                exp[2] = parseInt(exp[2]);
-                exp[3] = parseInt(exp[3]);
-                date = new Date(Date.UTC(exp[3], (exp[1]-1), (exp[2]+1))).setHours(15,0,0,0);
-            }
+    var data = {};
+    data['state'] = parsedData.hasOwnProperty('DAJ') ?  parsedData.DAJ : "";
+    data['city'] = parsedData.hasOwnProperty('DAI') ?  parsedData.DAI : "";
+    data['first_name'] = parsedData.hasOwnProperty('DAC') ?  parsedData.DAC : "";
+    data['middle_name'] = parsedData.hasOwnProperty('DAD') ?  parsedData.DAD : "";
+    data['last_name'] = parsedData.hasOwnProperty('DCS') ?  parsedData.DCS : "";
+    data['address'] = parsedData.hasOwnProperty('DAG') ?  parsedData.DAG : "";
+    data['dl'] = parsedData.hasOwnProperty('DAQ') ?  parsedData.DAQ.replace(' ', '') : "";
+    data['dob'] = parsedData.hasOwnProperty('DBB') ?  parsedData.DBB : "";
+    data['postal_code'] = parsedData.hasOwnProperty('DAK') ?  parsedData.DAK.match(/\d{-}\d+/)? parsedData.DAK : parsedData.DAK.substring(0,5) : "";
+    data['class'] = parsedData.hasOwnProperty('DCA') ?  parsedData.DCA : "";
+    data['id'] = parsedData.hasOwnProperty('DCA') ?  parsedData.DAQ.replace(/[^A-ZA-Z0-9]/g, "") : "";
+    data['sex'] = getGender(parsedData);
+    data['birthday'] = getBirthday(parsedData);
+    data['expiration_date'] = getExpiration(parsedData);
 
-            return date;
-        },
-        "birthday": function() {
+    return data;
+};
+
+getExpiration = function(parsedData){
+
+    try{
+        var exp = parsedData.DBA.match(/(\d{4})(\d{2})(\d{2})/);
+        var date;
+        if(exp[1].startsWith('20')){
+            //Year is first
+            exp[1] = parseInt(exp[1]);
+            exp[2] = parseInt(exp[2]);
+            exp[3] = parseInt(exp[3]);
+            date = new Date(Date.UTC(exp[1], (exp[2]-1), (exp[3]+1))).setHours(15,0,0,0);
+        }else{
+            exp = parsedData.DBA.match(/(\d{2})(\d{2})(\d{4})/);
+            exp[1] = parseInt(exp[1]);
+            exp[2] = parseInt(exp[2]);
+            exp[3] = parseInt(exp[3]);
+            date = new Date(Date.UTC(exp[3], (exp[1]-1), (exp[2]+1))).setHours(15,0,0,0);
+        }
+
+        return date;
+
+    }catch(err){
+        return "";
+    }
+
+}
+
+getBirthday = function(parsedData){
+    if (parsedData.hasOwnProperty('DBB')) {
+        
+        try{
             var dob = parsedData.DBB.match(/(\d{2})(\d{2})(\d{4})/);
             dob[1] = parseInt(dob[1]);
             dob[2] = parseInt(dob[2]);
             dob[3] = parseInt(dob[3]);
-
-            // return ( new Date( Date.UTC(dob[3], dob[1], dob[2]) ) );
             return new Date(Date.UTC(dob[3], (dob[1]-1), (dob[2]+1))).setHours(15,0,0,0);
-        },
-        "dob": parsedData.DBB,
-        "dl_overflow": undefined,
-        "cds_version": undefined,
-        "aamva_version": parsedData.version,
-        "jurisdiction_version": undefined,
-        "postal_code": parsedData.DAK.match(/\d{-}\d+/)? parsedData.DAK : parsedData.DAK.substring(0,5),
-        "class": parsedData.DCA,
-        "restrictions": undefined,
-        "endorsments": undefined,
-        "sex": function() {
-            switch(parsedData.DBC) {
-                case "1":
-                case 'M':
-                    return "MALE";
-                    break;
-                case "2":
-                case 'F':
-                    return "FEMALE";
-                    break;
-                default:
-                    return "UKNOWN";
-                    break;
-            }
-        },
-        "height": undefined,
-        "weight": undefined,
-        "hair_color": undefined,
-        "eye_color": undefined,
-        "misc": undefined,
-        "id": function(){
-            return parsedData.DAQ.replace(/[^A-ZA-Z0-9]/g, "");
+        }catch(err){
+            return "";
         }
-    };
 
-    return rawData;
-};
+    }else{
+        return "";
+    }
+}
+
+getGender = function (parsedData) {
+    if (parsedData.hasOwnProperty('DBC')) {
+        switch (parsedData.DBC) {
+            case "1":
+            case 'M':
+                return "MALE";
+                break;
+            case "2":
+            case 'F':
+                return "FEMALE";
+                break;
+            default:
+                return "UNKNOWN";
+                break;
+        }
+
+    } else {
+        return 'UNKNOWN';
+    }
+}
+
+
 
 //-----------------------------------------------------------
 // DEBUGGING
